@@ -40,7 +40,7 @@ case ${http_code:-} in
 	* ) rerun_die 3 "API error ${http_code:-} : GET ${URL}/api/11/storage/keys/$KEYPATH.";;
 esac  
 
-#xmlstarlet fo $CURL_OUT
+xmlstarlet fo $CURL_OUT
 
 xmlstarlet sel -t -m "/resource" \
 	-v "@path" 	-o ":" \
@@ -50,7 +50,6 @@ xmlstarlet sel -t -m "/resource" \
 	-n -o "  modify-time: " -v resource-meta/Rundeck-content-modify-time \
 	-n -o "  created-username: " -v resource-meta/Rundeck-auth-created-username \
 	-n -o "  modified-username: " -v resource-meta/Rundeck-auth-modified-username \
-	-n -o "  key-type: " -v resource-meta/Rundeck-key-type \
 	-n $CURL_OUT
 
 

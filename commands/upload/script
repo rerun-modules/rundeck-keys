@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-keys:upload: "upload a key"
+#/ usage: rerun rundeck-keys:upload  --keypath <>  --file <>  --key-type <public>  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --apikey <$RUNDECK_APIKEY>]  --format <> 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: KEYPATH FILE KEY_TYPE URL USERNAME PASSWORD APIKEY FORMAT
+
+. $RERUN_MODULE_DIR/lib/functions.sh upload || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+set -o errexit -o nounset -o pipefail
+
+rerun_options_parse "$@"
+
+# - - -
+# Put the command implementation here.
+# - - -
+: ${FORMAT:=public} ; # default the format to public.
+case "$FORMAT" in
+	public) content_type="application/pgp-keys" ;;
+	private) content_type="application/octet-stream" ;;
+	password) content_type="application/x-rundeck-data-password" ;;
+    * ) echo >&2 "unsupported format. Specify: public|private|pasword"
+		exit 2;;
+esac		
+
+
+KEYPATH=${KEYPATH#keys/}
+
+
+CURL_OUT=$(mktemp -t curl.out.XXXXX)
+trap 'rm $CURL_OUT' EXIT; # cleanup on exit
+
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
+if ! http_code=$(rundeck_curl -w "%{http_code}" -H "Content-Type: $content_type" --data-binary @"$FILE" \
+    -H 'Accept: application/xml' \
+    -X POST "${URL}/api/11/storage/keys/$KEYPATH" -o $CURL_OUT)
+then
+	rerun_die 3 "curl request failed (exit code: $?)"
+fi
+
+
+case ${http_code:-} in
+	201) : ;; # successful 
+	409) rerun_die 3 "$(xmlstarlet sel -t -m / -v error $CURL_OUT)" ;;
+    * ) rerun_die 3 "API error (HTTP response: $http_code, PUT ${URL}/api/11/storage/keys/$KEYPATH)." ;;
+esac    
+    
+# Done. Exit with last command exit status.
+exit $?
+
