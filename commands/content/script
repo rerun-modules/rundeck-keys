@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-keys:content: "get the key content"
+#/ usage: rerun rundeck-keys:content  --keypath <>  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --apikey <$RUNDECK_APIKEY>] 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: KEYPATH URL USERNAME PASSWORD APIKEY
+
+. $RERUN_MODULE_DIR/lib/functions.sh content || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+set -o errexit -o nounset -o pipefail
+
+rerun_options_parse "$@"
+
+KEYPATH=${KEYPATH#keys/}
+
+CURL_OUT=$(mktemp -t curl.out.XXXXX)
+trap 'rm $CURL_OUT' EXIT; # cleanup on exit
+
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
+if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: */*' \
+    -X GET "${URL}/api/11/storage/keys/$KEYPATH" -o $CURL_OUT  2>/dev/null)
+then
+	rerun_die 3 "curl request failed (exit code: $?)"
+fi
+
+cat $CURL_OUT
+# If the Accept request header matches */* or application/octet-stream, 
+# or a password if the request header matches */*,
+# or application/x-rundeck-data-password,
+# will result in a 403 Unauthorized response.
+
+
+case ${http_code:-} in
+	200) : ;; # successful
+	403) rerun_die 3 "Key content for private key data is not authorized." ;;
+	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
+	* ) rerun_die 3 "API error ${http_code:-} : GET ${URL}/api/11/storage/keys/$KEYPATH.";;
+esac  
+
+# Done. Exit with last command exit status.
+exit $?
+
