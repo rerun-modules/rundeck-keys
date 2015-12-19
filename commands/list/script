@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+#/ command: rundeck-keys:list: "list the keys"
+#/ usage: rerun rundeck-keys:list  --url <$RUNDECK_URL> [ --username <$RUNDECK_USER>] [ --password <$RUNDECK_PASSWORD>] [ --apikey <$RUNDECK_APIKEY>]  --keypath <> 
+#/ rerun-variables: RERUN, RERUN_VERSION, RERUN_MODULES, RERUN_MODULE_DIR
+#/ option-variables: URL USERNAME PASSWORD APIKEY KEYPATH
+
+. $RERUN_MODULE_DIR/lib/functions.sh list || { 
+  echo >&2 "Failed loading function library." ; exit 1 ; 
+}
+
+set -o errexit -o nounset -o pipefail
+
+rerun_options_parse "$@"
+
+#
+# Read authentication credentials
+#
+rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
+
+
+CURL_OUT=$(mktemp -t curl.out.XXXXX)
+trap 'rm $CURL_OUT' EXIT; # cleanup on exit
+
+# normalize the root path
+case $KEYPATH in
+	/) KEYPATH= ;;
+	keys) KEYPATH= ;;
+esac
+KEYPATH=${KEYPATH#keys/}
+
+if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: application/xml' \
+    -X GET "${URL}/api/11/storage/keys/${KEYPATH}" -o $CURL_OUT 2>/dev/null)
+then
+    case ${http_code:-} in
+    	204) : ;; # successful removal
+    	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
+		* ) rerun_die 3 "API error (HTTP response: $http_code, GET ${URL}/api/11/storage/keys/${KEYPATH})." ;;
+	esac  
+fi
+
+#xmlstarlet fo $CURL_OUT
+
+count=$(xmlstarlet sel -t -m "/resource/contents" -v @count $CURL_OUT)
+rerun_log debug "path contains $count resources"
+
+if ! subdirs=($(xmlstarlet sel -t -m "/resource/contents/resource[@type='directory']" -v "@path" -n $CURL_OUT))
+then
+	rerun_log debug "no sub directories in keypath $KEYPATH"
+fi
+
+xmlstarlet sel -t -m "//resource[@type='file']" \
+	-v "@path" 	-o ":" \
+	-n -o "  key-type: " -v resource-meta/Rundeck-key-type \
+	-n -o "  created: " -v resource-meta/Rundeck-content-creation-time \
+	-n $CURL_OUT
+
+# Make recursive call to `list` for subdirectories
+if [[ -n ${subdirs[*]:-} ]]
+then
+	for subdir in ${subdirs[*]}
+	do
+		rerun_log debug " - rerun rundeck-keys:list --keypath ${subdir}"
+		rerun rundeck-keys:list --keypath ${subdir}
+	done
+fi	
+# Done. Exit with last command exit status.
+exit $?
+
