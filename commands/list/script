@@ -32,12 +32,15 @@ KEYPATH=${KEYPATH#keys/}
 if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: application/xml' \
     -X GET "${URL}/api/11/storage/keys/${KEYPATH}" -o $CURL_OUT 2>/dev/null)
 then
-    case ${http_code:-} in
-    	204) : ;; # successful removal
-    	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
-		* ) rerun_die 3 "API error (HTTP response: $http_code, GET ${URL}/api/11/storage/keys/${KEYPATH})." ;;
-	esac  
+	rerun_die 3 "curl request failed (exit code: $?)"
 fi
+
+case ${http_code:-} in
+	200) : ;; # successful 
+	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
+	* ) rerun_die 3 "API error (HTTP response: $http_code, GET ${URL}/api/11/storage/keys/${KEYPATH})." ;;
+esac  
+
 
 #xmlstarlet fo $CURL_OUT
 
@@ -50,9 +53,7 @@ then
 fi
 
 xmlstarlet sel -t -m "//resource[@type='file']" \
-	-v "@path" 	-o ":" \
-	-n -o "  key-type: " -v resource-meta/Rundeck-key-type \
-	-n -o "  created: " -v resource-meta/Rundeck-content-creation-time \
+	-v "@path" \
 	-n $CURL_OUT
 
 # Make recursive call to `list` for subdirectories
