@@ -26,7 +26,6 @@ then
 	rerun_die 3 "curl request failed (exit code: $?)"
 fi
 
-cat $CURL_OUT
 # If the Accept request header matches */* or application/octet-stream, 
 # or a password if the request header matches */*,
 # or application/x-rundeck-data-password,
@@ -35,10 +34,12 @@ cat $CURL_OUT
 
 case ${http_code:-} in
 	200) : ;; # successful
-	403) rerun_die 3 "Key content for private key data is not authorized." ;;
-	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
+	403) rerun_die 1 "Key content for private key data is not possible." ;;
+	40*) rerun_die 1 "$(xmlstarlet sel -t -m / -v error $CURL_OUT)" ;;
 	* ) rerun_die 3 "API error ${http_code:-} : GET ${URL}/api/11/storage/keys/$KEYPATH.";;
 esac  
+
+cat $CURL_OUT
 
 # Done. Exit with last command exit status.
 exit $?

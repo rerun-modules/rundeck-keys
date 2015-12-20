@@ -25,11 +25,10 @@ if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: application/xml' \
     -X DELETE "${URL}/api/11/storage/keys/$KEYPATH" -o $CURL_OUT)
 then
 	rerun_die 3 "curl request failed (exit code: $?)"
-
 fi
 
 case ${http_code:-} in
-	204) : ;; # successful removal
+	204) : ;; # successful
 	404) rerun_log debug "key did not exist" ;;
 	40*) rerun_die 1 "$(xmlstarlet sel -t -m / -v error $CURL_OUT)" ;;
 	* ) rerun_die 3 "API error ${http_code:-}: DELETE ${URL}/api/11/storage/keys/$KEYPATH.)" ;;

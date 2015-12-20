@@ -37,7 +37,7 @@ fi
 
 case ${http_code:-} in
 	200) : ;; # successful 
-	404) rerun_die 3 "Key path not found: $KEYPATH" ;;
+	404) rerun_die 1 "Key path not found: $KEYPATH" ;;
 	* ) rerun_die 3 "API error (HTTP response: $http_code, GET ${URL}/api/11/storage/keys/${KEYPATH})." ;;
 esac  
 

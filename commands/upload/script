@@ -44,7 +44,7 @@ fi
 
 case ${http_code:-} in
 	201) : ;; # successful 
-	409) rerun_die 3 "$(xmlstarlet sel -t -m / -v error $CURL_OUT)" ;;
+	40*) rerun_die 1 "$(xmlstarlet sel -t -m / -v error $CURL_OUT)" ;;
     * ) rerun_die 3 "API error (HTTP response: $http_code, PUT ${URL}/api/11/storage/keys/$KEYPATH)." ;;
 esac    
     
