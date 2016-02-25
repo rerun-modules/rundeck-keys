@@ -22,11 +22,12 @@ rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKE
 CURL_OUT=$(mktemp -t curl.out.XXXXX)
 trap 'rm $CURL_OUT' EXIT; # cleanup on exit
 
-# normalize the root path
+# normalize the root path. 
 case $KEYPATH in
 	/) KEYPATH= ;;
 	keys) KEYPATH= ;;
 esac
+# Remove keys/ prefix if it exists.
 KEYPATH=${KEYPATH#keys/}
 
 if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: application/xml' \
@@ -41,28 +42,35 @@ case ${http_code:-} in
 	* ) rerun_die 3 "API error (HTTP response: $http_code, GET ${URL}/api/11/storage/keys/${KEYPATH})." ;;
 esac  
 
-
 #xmlstarlet fo $CURL_OUT
 
 count=$(xmlstarlet sel -t -m "/resource/contents" -v @count $CURL_OUT)
-rerun_log debug "path contains $count resources"
 
 if ! subdirs=($(xmlstarlet sel -t -m "/resource/contents/resource[@type='directory']" -v "@path" -n $CURL_OUT))
 then
 	rerun_log debug "no sub directories in keypath $KEYPATH"
 fi
 
-xmlstarlet sel -t -m "//resource[@type='file']" \
+if ! xmlstarlet sel -t -m "//resource[@type='file']" \
 	-v "@path" \
 	-n $CURL_OUT
+then
+	:; # there were no files in this listing.
+fi
 
 # Make recursive call to `list` for subdirectories
-if [[ -n ${subdirs[*]:-} ]]
+if (( ${#subdirs[*]:-} > 0 ))
 then
+	rerun_log debug "There are ${#subdirs[*]} subdirs: ${subdirs[*]}"
+	clopts=(--url $URL)
+	[[ -n "${USERNAME:-}" ]] && clopts=(${clopts[*]} --username $USERNAME)
+	[[ -n "${PASSWORD:-}" ]] && clopts=(${clopts[*]} --password $PASSWORD) 
+	[[ -n "${APIKEY:-}"   ]] && clopts=(${clopts[*]} --apikey $APIKEY)
+
 	for subdir in ${subdirs[*]}
 	do
 		rerun_log debug " - rerun rundeck-keys:list --keypath ${subdir}"
-		rerun rundeck-keys:list --keypath ${subdir}
+		rerun rundeck-keys:list --keypath ${subdir} ${clopts[*]}
 	done
 fi	
 # Done. Exit with last command exit status.

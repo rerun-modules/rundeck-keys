@@ -13,16 +13,22 @@ set -o errexit -o nounset -o pipefail
 
 rerun_options_parse "$@"
 
+# normalize the root path
+case $KEYPATH in
+	/) KEYPATH= ;;
+	keys) KEYPATH= ;;
+esac
+KEYPATH=${KEYPATH#/keys/*}
 KEYPATH=${KEYPATH#keys/}
-
 
 CURL_OUT=$(mktemp -t curl.out.XXXXX)
 trap 'rm $CURL_OUT' EXIT; # cleanup on exit
 
 rundeck_authenticate -u "$URL" -U "${USERNAME:-}" -p "${PASSWORD:-}" -k "${APIKEY:-}"
 
+APIURL=${URL}/api/11/storage/keys
 if ! http_code=$(rundeck_curl -w "%{http_code}" -H 'Accept: application/xml' \
-    -X GET "${URL}/api/11/storage/keys/$KEYPATH" -o $CURL_OUT  2>/dev/null)
+    -X GET "${APIURL}/$KEYPATH" -o $CURL_OUT  2>/dev/null)
 then
 	rerun_die 3 "curl request failed (exit code: $?)"
 fi
@@ -32,15 +38,14 @@ fi
 # or application/x-rundeck-data-password,
 # will result in a 403 Unauthorized response.
 
+#xmlstarlet fo $CURL_OUT
 
 case ${http_code:-} in
 	200) : ;; # successful
-	403) rerun_die 1 "Key metadata for private key data is not authorized." ;;
-	404) rerun_die 1 "Key path not found: $KEYPATH" ;;
-	* ) rerun_die 3 "API error ${http_code:-} : GET ${URL}/api/11/storage/keys/$KEYPATH.";;
+	40*) rerun_die 1 "$(xmlstarlet sel -t -m /result/error -v message $CURL_OUT)" ;;
+	* ) rerun_die 3 "API error ${http_code:-} : GET ${APIURL}/$KEYPATH.";;
 esac  
 
-xmlstarlet fo $CURL_OUT
 
 xmlstarlet sel -t -m "/resource" \
 	-v "@path" 	-o ":" \
